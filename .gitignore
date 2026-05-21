@@ -1,2 +1,48 @@
-.od-skills/
+# ---- Windows / OS ----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# ---- VS Code ----
+.vscode/
+*.code-workspace
+
+# ---- Node / package managers ----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+venv/
+ENV/
+.env
+
+# ---- Logs ----
+logs/
+*.log
+
+# ---- Build / output ----
+dist/
+build/
+coverage/
+
+# ---- Editor / temp files ----
+*.tmp
+*.swp
+*.swo
+
+# ---- Project artifacts / generated files ----
 *.artifact.json
+.vercel/
+.npm-cache/
+.od-skills/
+
+# ---- Secrets / keys (do not commit) ----
+*.pem
+*.key
+secrets.json
