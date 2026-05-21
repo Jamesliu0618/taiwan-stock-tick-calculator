@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="zh-TW"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>台股損益 Tick 試算器</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { -webkit-font-smoothing: antialiased; }
+    .fade-in { animation: fi .2s ease; }
+    @keyframes fi { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
+    .tbl thead th { position: sticky; top: 0; z-index: 10; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { opacity: .5; }
+    .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+    tr.row-entry   { background: #eff6ff; border-left: 3px solid #3b82f6; }
+    tr.row-be      { background: #fefce8; border-left: 3px solid #ca8a04; }
+    tr.row-profit  { background: #f0fdf4; }
+    tr.row-loss    { background: #fff5f5; }
+    tr.row-entry:hover, tr.row-be:hover { filter: brightness(.97); }
+    tr.row-profit:hover, tr.row-loss:hover { filter: brightness(.97); }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 text-sm">
+
+<!-- ===== HEADER ===== -->
+<header class="bg-slate-900 text-white shadow-lg">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
+    <span class="text-2xl select-none">📊</span>
+    <div>
+      <h1 class="font-bold text-base leading-tight tracking-tight">當沖試算器</h1>
+      <p class="text-slate-400 text-xs mt-px">Taiwan Stock 當沖 / 一般 / ETF</p>
+    </div>
+  </div>
+</header>
+
+<!-- ===== MAIN ===== -->
+<main class="max-w-7xl mx-auto p-3 md:p-4 space-y-3">
+  <div class="flex flex-col lg:flex-row gap-3 items-start">
+
+    <!-- ===== INPUT PANEL ===== -->
+    <aside class="w-full lg:w-72 flex-shrink-0">
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 space-y-3.5">
+        <h2 class="font-semibold text-slate-700 flex items-center gap-1.5 text-sm">
+          <span class="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"></span>交易參數設定
+        </h2>
+
+        <!-- Direction -->
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">交易方向</label>
+          <select id="direction" onchange="calc()" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="long">▲ 先買後賣（作多）</option>
+            <option value="short">▼ 先賣後買（作空）</option>
+          </select>
+        </div>
+
+        <!-- Entry Price -->
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">進場價格（元）</label>
+          <input id="entryPrice" type="number" value="100" min="0.01" step="any" oninput="calc()" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 num">
+          <span id="tickLabel" class="block text-xs text-slate-400 mt-1">升降單位：0.5 元</span>
+        </div>
+
+        <!-- Quantity Mode Toggle -->
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">交易數量</label>
+          <div class="flex rounded-lg border border-slate-200 overflow-hidden mb-2">
+            <button id="btnLots" onclick="setQtyMode('lots')" class="flex-1 py-1.5 text-xs font-semibold bg-blue-500 text-white transition-colors">以張計</button>
+            <button id="btnShares" onclick="setQtyMode('shares')" class="flex-1 py-1.5 text-xs font-semibold bg-white text-slate-500 transition-colors">以股計</button>
+          </div>
+          <div id="lotsWrap">
+            <input id="lots" type="number" value="1" min="1" step="1" oninput="calc()" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 num">
+            <span class="text-xs text-slate-400">1 張 = 1,000 股</span>
+          </div>
+          <div id="sharesWrap" class="hidden">
+            <input id="sharesCount" type="number" value="1000" min="1" step="1" oninput="calc()" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 num">
+            <span class="text-xs text-slate-400">直接輸入股數</span>
+          </div>
+        </div>
+
+        <!-- Fee Discount -->
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">
+            手續費折扣
+            <span class="text-slate-400 font-normal">（2.5折 → 填 2.5 或 25）</span>
+          </label>
+          <input id="feeDiscount" type="number" value="2.5" min="0.1" max="100" step="0.1" oninput="calc()" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 num">
+          <span id="discLabel" class="block text-xs text-slate-400 mt-1">折扣後費率：0.035625%</span>
+        </div>
+
+        <!-- Tax Type -->
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">證交稅率類型</label>
+          <select id="taxType" onchange="calc()" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="0.0015" selected="">當沖股票（0.15%）</option>
+            <option value="0.003">一般股票（0.30%）</option>
+            <option value="0.001">股票 ETF（0.10%）</option>
+            <option value="0">債券 ETF（0%）</option>
+          </select>
+        </div>
+
+        <!-- Min Fee Toggle -->
+        <label class="flex items-start gap-2.5 bg-amber-50 rounded-lg px-3 py-2.5 cursor-pointer border border-amber-100">
+          <input id="minFee" type="checkbox" checked="" onchange="calc()" class="mt-0.5 w-4 h-4 accent-amber-500 flex-shrink-0">
+          <div>
+            <span class="text-xs font-semibold text-slate-700">手續費最低 20 元</span>
+            <p class="text-xs text-slate-400 mt-0.5">啟用低消保護（小張數適用）</p>
+          </div>
+        </label>
+
+        <!-- Fee Rounding -->
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">手續費取整方式</label>
+          <select id="feeRound" onchange="calc()" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="floor">無條件捨去（Math.floor）— 多數券商</option>
+            <option value="round">四捨五入（Math.round）</option>
+          </select>
+        </div>
+
+        <!-- Tick Range -->
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">顯示 Tick 範圍</label>
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs text-slate-400 flex-shrink-0">±</span>
+            <input id="tickRange" type="number" value="10" min="1" max="50" step="1" oninput="calc()" class="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 num">
+            <span class="text-xs text-slate-400 flex-shrink-0">Tick</span>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- ===== RESULTS PANEL ===== -->
+    <div class="flex-1 min-w-0 space-y-3">
+
+      <!-- Cost Summary Card -->
+      <div id="costCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-4 fade-in">
+        <h2 class="font-semibold text-slate-700 text-sm mb-3 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>進場成本分析
+        </h2>
+        <div id="costGrid" class="grid grid-cols-2 md:grid-cols-4 gap-2"></div>
+        <div id="costFormula" class="mt-3 text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2 leading-relaxed"></div>
+      </div>
+
+      <!-- Breakeven Card -->
+      <div id="beCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-4 fade-in">
+        <div class="flex flex-wrap items-center gap-4">
+          <div class="flex-1 min-w-0">
+            <p class="text-xs font-medium text-slate-500">損益兩平資訊</p>
+            <p id="beText" class="text-base font-bold text-slate-800 mt-0.5"></p>
+          </div>
+          <div id="beBadges" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+
+      <!-- Tick Table Card -->
+      <div id="tableCard" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 fade-in">
+        <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="font-semibold text-slate-700 text-sm flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-purple-500 flex-shrink-0"></span>各 Tick 損益試算表
+          </h2>
+          <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+            <span class="flex items-center gap-1"><span class="w-3 h-2.5 rounded-sm bg-blue-100 border border-blue-300 inline-block"></span>進場</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-2.5 rounded-sm bg-yellow-100 border border-yellow-400 inline-block"></span>損益兩平</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-2.5 rounded-sm bg-emerald-100 border border-emerald-300 inline-block"></span>獲利</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-2.5 rounded-sm bg-red-100 border border-red-200 inline-block"></span>虧損</span>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full tbl">
+            <thead class="border-b border-slate-200 text-xs">
+              <tr>
+                <th class="px-3 py-2.5 text-center font-medium text-slate-500 whitespace-nowrap bg-slate-50">Tick 偏移</th>
+                <th class="px-3 py-2.5 text-right font-medium text-slate-500 whitespace-nowrap bg-slate-50">出場價格</th>
+                <th class="px-3 py-2.5 text-right font-medium text-slate-500 whitespace-nowrap bg-slate-50">買進手續費</th>
+                <th class="px-3 py-2.5 text-right font-medium text-slate-500 whitespace-nowrap bg-slate-50">賣出手續費</th>
+                <th class="px-3 py-2.5 text-right font-medium text-slate-500 whitespace-nowrap bg-slate-50">證交稅</th>
+                <th class="px-3 py-2.5 text-right font-medium text-slate-500 whitespace-nowrap bg-slate-50 text-sm">淨損益（元）</th>
+                <th class="px-3 py-2.5 text-right font-medium text-slate-500 whitespace-nowrap bg-slate-50">報酬率</th>
+                <th class="px-3 py-2.5 text-left font-medium text-slate-500 whitespace-nowrap bg-slate-50">備註</th>
+              </tr>
+            </thead>
+            <tbody id="tBody" class="divide-y divide-slate-100 text-xs md:text-sm"></tbody>
+          </table>
+        </div>
+        <div class="px-4 py-2.5 border-t border-slate-100 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
+          <span>⚠ 本工具僅供試算參考，不構成投資建議。</span>
+          <span id="roundNote">手續費計算：Math.floor（無條件捨去）</span>
+          <span>手續費率：買賣各 0.1425% × 折扣</span>
+        </div>
+      </div>
+
+    </div><!-- end results -->
+  </div>
+</main>
+
+<!-- ===== SCRIPT ===== -->
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  TICK ENGINE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function getTickSize(p) {
+  if (p < 10)   return 0.01;
+  if (p < 50)   return 0.05;
+  if (p < 100)  return 0.1;
+  if (p < 500)  return 0.5;
+  if (p < 1000) return 1.0;
+  return 5.0;
+}
+
+// Floating-point-safe rounding to N decimal places
+function prec(n, d = 8) {
+  return Math.round(n * Math.pow(10, d)) / Math.pow(10, d);
+}
+
+function tickUp(p) {
+  return prec(p + getTickSize(p));
+}
+
+// Handles boundary: e.g. 10.00 - 1 tick = 9.99 (uses lower zone's tick)
+function tickDown(p) {
+  const curTick  = getTickSize(p);
+  const candidate = prec(p - curTick);
+  const lowerTick = getTickSize(candidate);
+  // If candidate is in a lower price zone → use that zone's (smaller) tick instead
+  if (lowerTick < curTick) return prec(p - lowerTick);
+  return candidate;
+}
+
+function priceAtOffset(entry, n) {
+  let p = entry;
+  if (n > 0)      for (let i = 0; i <  n; i++) p = tickUp(p);
+  else if (n < 0) for (let i = 0; i > n; i--) p = tickDown(p);
+  return p;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  FEE ENGINE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// Accept: 2.5 (折) | 25 (%) | 0.25 (ratio)
+function parseDiscount(v) {
+  if (v > 10) return v / 100;  // 25 → 0.25
+  if (v > 1)  return v / 10;   // 2.5 → 0.25
+  return v;                     // 0.25 → 0.25
+}
+
+function calcFee(amount, disc, minFee, useFloor) {
+  const raw     = amount * 0.001425 * disc;
+  const rounded = useFloor ? Math.floor(raw) : Math.round(raw);
+  return (minFee && rounded < 20) ? 20 : rounded;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  P&L ENGINE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//
+//  Long  (作多): buy at entry, sell at exit
+//    netPnL  = (sellAmt − sellFee − tax) − (buyAmt + buyFee)
+//    retBase = buyAmt + buyFee
+//
+//  Short (作空): sell at entry, buy back at exit
+//    netPnL  = (sellAmt − sellFee − tax) − (buyAmt + buyFee)
+//    retBase = sellAmt  [entry notional, simplified]
+//
+//  In both cases "sellAmt" always refers to the sell leg, "buyAmt" to the buy leg.
+//  Tax (證交稅) is ONLY on the sell leg (paid by the seller per TW law).
+
+function calcRow(entry, exit, shares, disc, taxRate, minFee, useFloor, dir) {
+  const buyP    = dir === 'long' ? entry : exit;   // who is buying at what price
+  const sellP   = dir === 'long' ? exit  : entry;  // who is selling at what price
+
+  const buyAmt  = prec(buyP  * shares);
+  const sellAmt = prec(sellP * shares);
+  const buyFee  = calcFee(buyAmt,  disc, minFee, useFloor);
+  const sellFee = calcFee(sellAmt, disc, minFee, useFloor);
+  const tax     = prec(sellAmt * taxRate);
+
+  const cost   = buyAmt  + buyFee;          // total outflow for buy leg
+  const rev    = sellAmt - sellFee - tax;   // net inflow for sell leg
+  const netPnL = rev - cost;
+
+  // Return rate denominator
+  const retBase = dir === 'long' ? cost : sellAmt;
+  const retPct  = retBase > 0 ? netPnL / retBase : 0;
+
+  return { buyAmt, sellAmt, buyFee, sellFee, tax, cost, rev, netPnL, retPct };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  FORMATTING HELPERS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function fmtPrice(p) {
+  if (p < 50)   return p.toFixed(2);
+  if (p < 100)  return p.toFixed(1);
+  if (p < 500)  return p.toFixed(1);
+  if (p < 1000) return p.toFixed(0);
+  return p.toFixed(0);
+}
+
+function fmtMoney(n, withSign = false) {
+  const s = Math.round(n).toLocaleString('zh-TW');
+  return (withSign && n > 0) ? '+' + s : s;
+}
+
+function fmtPct(n, withSign = false) {
+  const s = (n * 100).toFixed(4) + '%';
+  return (withSign && n > 0) ? '+' + s : s;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  STATE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+let qtyMode = 'lots';
+
+function setQtyMode(m) {
+  qtyMode = m;
+  const isLots = m === 'lots';
+  document.getElementById('lotsWrap').classList.toggle('hidden', !isLots);
+  document.getElementById('sharesWrap').classList.toggle('hidden', isLots);
+  document.getElementById('btnLots').className   = `flex-1 py-1.5 text-xs font-semibold transition-colors ${isLots  ? 'bg-blue-500 text-white' : 'bg-white text-slate-500'}`;
+  document.getElementById('btnShares').className = `flex-1 py-1.5 text-xs font-semibold transition-colors ${!isLots ? 'bg-blue-500 text-white' : 'bg-white text-slate-500'}`;
+  calc();
+}
+
+function getShares() {
+  return qtyMode === 'lots'
+    ? (parseInt(document.getElementById('lots').value)        || 1) * 1000
+    : (parseInt(document.getElementById('sharesCount').value) || 1);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  RENDER: COST SUMMARY
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function renderCost(entry, shares, disc, taxRate, minFee, useFloor, dir) {
+  const entryAmt = prec(entry * shares);
+
+  let tiles = [];
+  let formula = '';
+
+  if (dir === 'long') {
+    const bf = calcFee(entryAmt, disc, minFee, useFloor);
+    const totalCost = entryAmt + bf;
+    const bfNote = (minFee && bf === 20) ? '已套用低消 $20' : (useFloor ? '已無條件捨去' : '已四捨五入');
+
+    tiles = [
+      { label: '買進金額',  value: `$${fmtMoney(entryAmt)}`, sub: `${shares.toLocaleString()} 股 × ${entry}` },
+      { label: '買進手續費', value: `$${fmtMoney(bf)}`,       sub: bfNote, warn: (minFee && bf === 20) },
+      { label: '總進場成本', value: `$${fmtMoney(totalCost)}`, sub: '含買進手續費', hi: true },
+      { label: '每股均成本', value: `$${(totalCost / shares).toFixed(4)}`, sub: '進場均成本' },
+    ];
+    formula = `公式（作多）：淨損益 = (賣出金額 − 賣出手續費 − 證交稅) − (買進金額 + 買進手續費)　報酬率 = 淨損益 ÷ 總進場成本`;
+  } else {
+    const sf = calcFee(entryAmt, disc, minFee, useFloor);
+    const tx = prec(entryAmt * taxRate);
+    const netRcv = entryAmt - sf - tx;
+    const sfNote = (minFee && sf === 20) ? '已套用低消 $20' : (useFloor ? '已無條件捨去' : '已四捨五入');
+
+    tiles = [
+      { label: '放空賣出金額', value: `$${fmtMoney(entryAmt)}`, sub: `${shares.toLocaleString()} 股 × ${entry}` },
+      { label: '賣出手續費+稅', value: `$${fmtMoney(sf + tx)}`,  sub: `費 $${fmtMoney(sf)} + 稅 $${fmtMoney(tx)}`, warn: (minFee && sf === 20) },
+      { label: '放空淨收款',    value: `$${fmtMoney(netRcv)}`,   sub: '扣費後實際收入', hi: true },
+      { label: '每股淨收款',    value: `$${(netRcv / shares).toFixed(4)}`, sub: '放空均收款' },
+    ];
+    formula = `公式（作空）：淨損益 = (賣出金額 − 賣出手續費 − 證交稅) − (買進回補金額 + 買進手續費)　報酬率 = 淨損益 ÷ 賣出金額（以進場名義金額為基準）`;
+  }
+
+  document.getElementById('costGrid').innerHTML = tiles.map(t => `
+    <div class="rounded-lg p-3 ${t.hi ? 'bg-blue-50 border border-blue-200' : t.warn ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}">
+      <p class="text-xs text-slate-500">${t.label}</p>
+      <p class="font-bold text-slate-900 mt-0.5 num">${t.value}</p>
+      <p class="text-xs text-slate-400 mt-0.5">${t.sub}</p>
+    </div>
+  `).join('');
+
+  document.getElementById('costFormula').textContent = formula;
+  document.getElementById('costCard').classList.remove('hidden');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  RENDER: BREAKEVEN CARD
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function renderBreakeven(rows, beIdx, dir) {
+  const card = document.getElementById('beCard');
+
+  if (beIdx < 0) {
+    document.getElementById('beText').textContent = '在設定的 Tick 範圍內無法獲利';
+    document.getElementById('beBadges').innerHTML = '';
+    card.classList.remove('hidden');
+    return;
+  }
+
+  const beRow = rows[beIdx];
+  const ticksNeeded = Math.abs(beRow.n);
+  const dirLabel    = dir === 'long'
+    ? `需價格往上 ${ticksNeeded} Tick`
+    : `需價格往下 ${ticksNeeded} Tick`;
+
+  document.getElementById('beText').textContent =
+    `最少需 ${ticksNeeded} Tick 才能獲利（${dirLabel}）`;
+
+  document.getElementById('beBadges').innerHTML = `
+    <div class="flex flex-wrap gap-2">
+      <span class="inline-flex items-center gap-1 bg-yellow-100 text-yellow-800 text-xs font-semibold px-2.5 py-1 rounded-full border border-yellow-300">
+        ★ 損益兩平出場價：${fmtPrice(beRow.ep)} 元
+      </span>
+      <span class="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-xs font-semibold px-2.5 py-1 rounded-full border border-emerald-300">
+        最低淨利：+${fmtMoney(beRow.netPnL)} 元
+      </span>
+      <span class="inline-flex items-center gap-1 bg-slate-100 text-slate-600 text-xs px-2.5 py-1 rounded-full border border-slate-200">
+        報酬率：${fmtPct(beRow.retPct, true)}
+      </span>
+    </div>
+  `;
+
+  card.classList.remove('hidden');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  RENDER: TICK TABLE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function renderTable(rows, beIdx, dir) {
+  const tbody = document.getElementById('tBody');
+
+  tbody.innerHTML = rows.map(({ n, ep, buyFee, sellFee, tax, netPnL, retPct }, idx) => {
+    const isEntry  = n === 0;
+    const isBe     = idx === beIdx;
+    const isProfit = !isEntry && !isBe && netPnL > 0;
+    const isLoss   = !isEntry && !isBe && netPnL < 0;
+
+    const rowCls = isEntry ? 'row-entry' : isBe ? 'row-be' : isProfit ? 'row-profit' : 'row-loss';
+
+    // Price direction indicator: ▲ = price went up, ▼ = price went down
+    const tickLabel = n === 0
+      ? `<span class="text-blue-500 font-semibold">±0</span>`
+      : n > 0
+        ? `<span class="text-emerald-600 font-semibold">▲${n}</span>`
+        : `<span class="text-red-500 font-semibold">▼${Math.abs(n)}</span>`;
+
+    // For short, favorable is DOWN (negative offset)
+    const favorableForDir = dir === 'long' ? (n > 0) : (n < 0);
+    const pnlCls = isEntry
+      ? 'text-blue-700 font-semibold'
+      : netPnL > 0
+        ? 'text-emerald-700 font-semibold'
+        : netPnL < 0
+          ? 'text-red-600 font-semibold'
+          : 'text-slate-500';
+
+    let note = '';
+    if (isEntry)       note = `<span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs font-medium">進場</span>`;
+    else if (isBe)     note = `<span class="bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded text-xs font-medium">損益兩平</span>`;
+
+    return `
+      <tr class="${rowCls}">
+        <td class="px-3 py-2 text-center num whitespace-nowrap">${tickLabel}</td>
+        <td class="px-3 py-2 text-right num font-mono whitespace-nowrap">${fmtPrice(ep)}</td>
+        <td class="px-3 py-2 text-right num text-slate-600 whitespace-nowrap">${fmtMoney(buyFee)}</td>
+        <td class="px-3 py-2 text-right num text-slate-600 whitespace-nowrap">${fmtMoney(sellFee)}</td>
+        <td class="px-3 py-2 text-right num text-slate-600 whitespace-nowrap">${fmtMoney(tax)}</td>
+        <td class="px-3 py-2 text-right num whitespace-nowrap ${pnlCls}">${fmtMoney(netPnL, true)}</td>
+        <td class="px-3 py-2 text-right num whitespace-nowrap ${pnlCls}">${fmtPct(retPct, true)}</td>
+        <td class="px-3 py-2 whitespace-nowrap">${note}</td>
+      </tr>
+    `;
+  }).join('');
+
+  document.getElementById('tableCard').classList.remove('hidden');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  MAIN CALC
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function calc() {
+  const entry    = parseFloat(document.getElementById('entryPrice').value);
+  const shares   = getShares();
+  const discRaw  = parseFloat(document.getElementById('feeDiscount').value);
+  const disc     = parseDiscount(discRaw);
+  const taxRate  = parseFloat(document.getElementById('taxType').value);
+  const minFee   = document.getElementById('minFee').checked;
+  const useFloor = document.getElementById('feeRound').value === 'floor';
+  const dir      = document.getElementById('direction').value;
+  const range    = Math.max(1, Math.min(50, parseInt(document.getElementById('tickRange').value) || 10));
+
+  if (!entry || entry <= 0 || !shares || shares <= 0 || isNaN(discRaw)) return;
+
+  // Update dynamic labels
+  document.getElementById('tickLabel').textContent =
+    `升降單位：${getTickSize(entry)} 元`;
+  document.getElementById('discLabel').textContent =
+    `折扣後費率：${(0.1425 * disc).toFixed(6)}%（原費率 0.1425% × ${disc.toFixed(4)}）`;
+  document.getElementById('roundNote').textContent =
+    `手續費計算：${useFloor ? 'Math.floor（無條件捨去）' : 'Math.round（四捨五入）'}`;
+
+  // Build ordered offset list:
+  // Long  → profitable = upward (+), so display +N first down to -N
+  // Short → profitable = downward (−), so display -N first up to +N
+  const offsets = [];
+  if (dir === 'long') {
+    for (let i = range; i >= -range; i--) offsets.push(i);
+  } else {
+    for (let i = -range; i <= range; i++) offsets.push(i);
+  }
+
+  // Compute rows
+  const rows = offsets.map(n => {
+    const ep = priceAtOffset(entry, n);
+    const r  = calcRow(entry, ep, shares, disc, taxRate, minFee, useFloor, dir);
+    return { n, ep, ...r };
+  });
+
+  // Find breakeven index: the LAST profitable row (netPnL >= 0) before the first loss row
+  // (Rows are already sorted most-favorable → least-favorable, so this is the last in the
+  //  leading profitable block.)
+  let beIdx = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].netPnL >= 0) {
+      beIdx = i;                        // keep updating; we want the last profitable row
+      if (i + 1 < rows.length && rows[i + 1].netPnL < 0) break;  // stop at the transition
+    } else if (beIdx >= 0) {
+      break; // we've exited the profitable zone
+    }
+  }
+
+  // Exclude the entry row (offset 0) from being marked as breakeven
+  if (beIdx >= 0 && rows[beIdx].n === 0) beIdx = -1;
+
+  renderCost(entry, shares, disc, taxRate, minFee, useFloor, dir);
+  renderBreakeven(rows, beIdx, dir);
+  renderTable(rows, beIdx, dir);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  INIT
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+calc();
+</script>
+
+
+</body></html>
