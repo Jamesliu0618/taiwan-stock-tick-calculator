@@ -730,13 +730,14 @@
     }
 
     function syncControls() {
-      el.entryPrice.value = state.entryPrice;
-      el.lots.value = state.lots;
-      el.sharesCount.value = state.sharesCount;
-      el.feeDiscount.value = state.feeDiscount;
+      const active = document.activeElement;
+      if (active !== el.entryPrice)  el.entryPrice.value  = state.entryPrice;
+      if (active !== el.lots)        el.lots.value        = state.lots;
+      if (active !== el.sharesCount) el.sharesCount.value = state.sharesCount;
+      if (active !== el.feeDiscount) el.feeDiscount.value = state.feeDiscount;
       el.taxType.value = state.taxType;
       el.minFee.checked = Boolean(state.minFee);
-      el.tickRange.value = state.tickRange;
+      if (active !== el.tickRange)   el.tickRange.value   = state.tickRange;
 
       document.querySelectorAll("[data-direction]").forEach((button) => {
         button.classList.toggle("active", button.dataset.direction === state.direction);
